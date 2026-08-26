@@ -1,4 +1,3 @@
-
 ---
 name: feature-map
 description: Use this when you need a verification feature map for a real repository, and again on every merge or PR that changes user-facing behavior. First run emits features/README.md plus one markdown file per feature (four H2s). Merge run keeps that map honest. User paths and observable proof only.
