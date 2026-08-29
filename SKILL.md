@@ -1,45 +1,95 @@
 ---
 name: feature-map
-description: Use this when you need a verification feature map for a real repository, and again on every merge or PR that changes user-facing behavior. First run emits features/README.md plus one markdown file per feature (four H2s). Merge run keeps that map honest. User paths and observable proof only.
+description: Use this when a repo already exists and you need a project-local verify skill + feature map so the next agent can read one feature file cold instead of re-interviewing the tree; and again on every merge/PR that changes user-facing behavior.
 ---
 
-# Feature map (pstack / poteto-mode)
+# Feature map
 
-A feature map is how a fresh agent or engineer verifies a product from the outside. Lauren Tan (@poteto) at Cursor. The pstack `/create-verification-skill` shape.
+Lauren Tan (@poteto). pstack `/create-verification-skill` and `/maintain-verification-skill`. This skill generates a project-local verification skill. The next agent reads that skill cold, mid-task, having never seen the app.
 
-One markdown file per user-facing feature. Four H2s, always in this order. User paths and observable proof only. Implementation stays in the source tree.
+The feature map lives inside that generated skill. One feature file opens for the change under test. The rest of the tree stays closed. That is the token cut. A new user-facing change in a PR gets a map update in that same PR.
+
+Official shape:
+
+- https://github.com/cursor/plugins/blob/main/pstack/skills/create-verification-skill/SKILL.md
+- https://github.com/cursor/plugins/blob/main/pstack/skills/maintain-verification-skill/SKILL.md
+
+The sample map lives at [`poteto/features/`](poteto/features/). It maps the public repo [mcp-approval-scanner](https://github.com/Shalmipatel/mcp-approval-scanner). Open those files before you emit a new map.
 
 This skill does two jobs.
 
-1. **Generate.** Interview the repo. Emit `features/README.md` plus one markdown file per user-facing feature.
-2. **Merge upkeep.** On every merge, and on every PR that changes user-facing behavior, keep the map honest before the PR lands. Lauren Tan's pstack `/maintain-verification-skill` loop.
-
-The sample that already holds this contract lives at [`poteto/features/`](poteto/features/). It maps the public repo [mcp-approval-scanner](https://github.com/Shalmipatel/mcp-approval-scanner). Open those files before you emit a new map.
+1. **Generate.** Interview the repo. Write `.cursor/skills/verify-<app>/` (skill body plus a seeded feature map). Prove it once. Hand it to the next agent.
+2. **Maintain.** On every merge, and on every PR that changes user-facing behavior, keep that map honest before the PR lands.
 
 ## What you emit
 
 ```
-features/README.md              index, baseline, conventions, feature list
-features/<feature-slug>.md      one user-facing feature
+.cursor/skills/verify-<app>/SKILL.md
+.cursor/skills/verify-<app>/features/README.md
+.cursor/skills/verify-<app>/features/<feature-slug>.md
+.cursor/skills/verify-<app>/helpers/     optional; executable; cited from the skill body
 ```
 
-Keep the map next to the repo you are verifying, or in a sibling `features/` directory you name in the index.
+`<app>` is a short kebab name taken from the repo. For the sample that name is `mcp-approval-scanner`.
 
-## Index README
+A `features/` folder at the repo root is the wrong target. The map is an input to the next agent. It belongs inside the skill that agent will load.
 
-Start with an H1 that names the product and calls the directory a verification map.
+## Generate (pstack /create-verification-skill)
 
-Then, in this order:
+### 1. Interview the repo, not the user
 
-1. One short paragraph: read the index first, then drive the matching feature file.
-2. `## Baseline preconditions`. Install, cwd, which fixtures or accounts to use, how to treat commands (literal), where proof artifacts live.
-3. `## Driving conventions`. Fresh process vs shared state, the user surface (CLI, UI, API), the tokens that mean pass and fail, the rule for skipped checkpoints.
-4. `## Feature entry contract`. H1, one behavior paragraph, then the four H2s in order. Copy the four names exactly.
-5. `## Features`. A linked list. One line per file. The line is the user-visible behavior, the link is the slug file.
+Read the checkout. Derive five facts. Ask the user only for a fact you cannot observe.
 
-## Feature file contract
+| Fact | You are answering |
+| --- | --- |
+| Surface | The user-facing thing a person drives (CLI module, URL, desktop window, API). |
+| Run | Exact start or invoke command. Ready signal. How a short-lived CLI differs from a long-lived server. |
+| Drive | The harness: real selectors, flags, or commands in THIS repo. |
+| Observe | Tokens, rows, files, screens, exit codes that prove a path. |
+| Isolate | What makes a session independent (fresh process, fixture, account, cwd). |
 
-Every feature file uses this skeleton. Keep the H2 titles exact. Replace `<harness>` with the name of the user surface people actually drive (the CLI module, the web app, the API).
+If the checkout does not start, fix it or report the failure. Do not generate a skill against a dead tree.
+
+### 2. Write the verify skill
+
+Write `.cursor/skills/verify-<app>/SKILL.md` with YAML frontmatter:
+
+- `name`: `verify-<app>`
+- `description`: names the app, names the surface, and says when to reach for this skill (a mid-task agent about to drive this product)
+
+Then six sections, grounded in the interview. No placeholders. No `TODO`. Every command is one you ran or read from this repo.
+
+**Launch.** Exact start command. Ready signal you can quote. Teardown for a long-lived process. For a short-lived CLI: build once, isolated session per drive.
+
+**Doctor.** Read-only. Is this instance worth driving? Cwd, binary, fixture, health token. A sick instance fails doctor. You do not drive it.
+
+**Drive.** Harness recipe. Real selectors and commands from this repo. Point at `features/` for the per-feature recipes. The next agent opens one feature file and follows that file.
+
+**Evidence.** What to capture, the directory it lands in, and the proof standard:
+
+- A real user path.
+- An action plus the resulting state.
+- Side effects you can name (exit code, written file, printed token).
+- Mocks only at a real production boundary.
+
+**Cleanup.** Kill what you started. Record the pid at Launch. Never kill by process name. Evidence survives cleanup.
+
+**Helpers.** If you add a script, it is executable, and the skill body shows the invocation. A helper with no call site is dead weight.
+
+### 3. Seed the feature map
+
+Write `.cursor/skills/verify-<app>/features/README.md` plus one file per user-facing feature. Start with the top 3 to 5. User paths and observable proof only. Implementation stays in the source tree.
+
+Index first:
+
+1. H1 that names the product and calls the directory a verification map.
+2. One short paragraph: read the index, then open the matching feature file.
+3. `## Baseline preconditions`. Install, cwd, fixtures or accounts, literal commands, where proof artifacts live.
+4. `## Driving conventions`. Fresh process vs shared state, the user surface, pass and fail tokens, the rule for a skipped checkpoint.
+5. `## Feature entry contract`. H1, one behavior paragraph, then the four H2s in order.
+6. `## Features`. A linked list. One line per file. The line is the user-visible behavior.
+
+Every feature file uses this skeleton. Keep the H2 titles exact. Replace `<harness>` with the surface people drive.
 
 ````markdown
 # <User-visible behavior in a short title>
@@ -74,63 +124,61 @@ Preconditions:
 - <a neighboring feature that looks like this proof and is a different file>
 ````
 
-### Sub-features
+**Sub-features.** Short kebab IDs. One line each. Each line is a slice of user-visible behavior you can point at in the drive section.
 
-Short kebab IDs. One line each. Each line is a slice of user-visible behavior you can point at in the drive section.
+**How to get to it (user POV).** Entry points a person uses. Commands they type. Screens they open. Flags they pass. Keep source file paths out of this section.
 
-### How to get to it (user POV)
+**Driving it with the harness.** Start with `Preconditions:`. Then pair every user action with an exact command and an observable result. Observables are exit codes, printed tokens, table rows, screens, and files you save under `artifacts/`. Name the harness after the product the user drives. In the sample that name is `mcp-approval-scanner`.
 
-Entry points a person uses. Commands they type. Screens they open. Flags they pass. Keep source file paths out of this section.
+**Gotchas.** Traps that invalidate a run: reused processes, the wrong flag set, treating a neighboring feature as this proof, asserting a string the fixture never prints.
 
-### Driving it with the harness
+Open [`poteto/features/`](poteto/features/) and copy the rhythm. Three files are enough for a first map of that scanner: pin holds, drift fails, short inspect stays under the gate.
 
-Start with `Preconditions:`. Then pair every user action with an exact command and an observable result. Observables are exit codes, printed tokens (`SHIP: PASS`, `SHIP: FAIL`, `side=tools`), table rows, and files you save under `artifacts/`.
+### 4. Prove the generated skill
 
-Name the harness after the product the user drives. In the sample that name is `mcp-approval-scanner`.
+Before you hand the skill over, execute it.
 
-### Gotchas
+1. Launch.
+2. Doctor.
+3. Drive one mapped feature.
+4. Capture evidence where the skill says it goes.
+5. Cleanup.
+6. Confirm the evidence still exists.
 
-Traps that invalidate a run: reused processes, the wrong `--calls` list, treating a neighboring feature as this proof, asserting a string the fixture never prints.
+A skill that was never executed is a draft. Say so, or finish the prove pass.
 
-## Interview a repo and emit the first map
+### 5. Point at the maintain loop
 
-Work from the outside in.
+The generated skill is live the moment you prove it. From here, every user-facing change updates the map in the same change. The maintain job below is that loop.
 
-1. **Drive the user surface.** Install what the README tells you to install. Run the documented commands. Record cwd, command, stdout, stderr, and exit code.
-2. **List entry points.** CLI flags, URLs, buttons, fixture names. These become "How to get to it".
-3. **Group by user-visible behavior.** One sentence per feature. A feature is something a person can succeed or fail at in one sitting. Split when the pass token changes (exit 0 vs exit 1, different fixture, different flag set).
-4. **Name sub-features.** Short IDs for the slices inside that sitting (connect, pin, held, pass).
-5. **Write the drive recipe.** Preconditions first. Then action, exact command, observable result. Save proof under `artifacts/<slug>/`.
-6. **Write gotchas** from the first time you almost filed the wrong proof (short inspect vs full schedule, shared process, green pytest).
-7. **Write the index last.** Baseline preconditions, driving conventions, the four-H2 contract, then the linked feature list.
+## Feature file size
 
-Open [`poteto/features/`](poteto/features/) and copy the rhythm. Three features is enough for a first map of that scanner: pin holds, drift fails, short inspect stays under the gate.
+One feature file is one sitting at the user surface. Two pass tokens can share a file when the point is the contrast. They split when each token is a result a user would file on its own. The sample splits them: `fail-on-drift.md` is the fail, `short-inspect-miss.md` is the contrast.
 
 ## What counts as proof
 
 - Exit code.
 - A printed token you can quote (`SHIP: PASS`, `SHIP: FAIL`, `side=tools`, a named tool, a held prompts hash).
 - A saved artifact path.
+- A screen that shows the action and the resulting state.
 
 A green `pytest` run is a different signal. Drive the user surface and keep the pytest command in the product repo.
 
-## Size
+## Maintain (pstack /maintain-verification-skill)
 
-One feature file is one sitting at the user surface. If you need two pass tokens to tell the story (a passing one-call run and a failing 1,3,10 run), that pair is one feature when the point is the contrast. It is two features when each token is a result a user would file on its own. The sample splits them: `fail-on-drift.md` is the fail, `short-inspect-miss.md` is the contrast.
+The feature map rots the moment the app changes. The unit of rigor is the feature.
 
-## Merge upkeep
+Edit only the verify skill directory: `.cursor/skills/verify-<app>/`. Product source stays in its own review.
 
-Run this on every merge, and on every PR that changes user-facing behavior, before the PR lands. The map stays a live recipe. A stale file is a failed upkeep.
+Never paper over a product regression by rewriting the map. If the app broke, report the command, the expected token, and the actual output. Leave the feature file pointing at that proof until the product is fixed. If the docs drifted (new flag, new token, new entry point) and the app still does the job, fix the map in this same PR.
 
-### What you may edit
-
-Edit only the map: `features/` and this skill. Product source stays in its own review. If a mapped command fails because the app broke, report the command, the expected token, and the actual stdout. Leave the feature file pointing at that proof until the product is fixed. If the docs drifted (new flag, new token, new entry point) and the app still does the job, update the map in this same PR.
+Any new change an agent makes that is user-facing is added to the feature map in that same change.
 
 ### Loop
 
-1. **Index hygiene.** Open `features/README.md`. Every linked feature file exists. Every `features/*.md` except the index is linked. Drop dead links. Add a line for a file that is missing from the list.
+1. **Index hygiene.** Open `features/README.md` inside the verify skill. Every linked feature file exists. Every `features/*.md` except the index is linked. Drop dead links. Add a line for a file that is missing from the list.
 2. **Source wave.** Read each feature file against the PR diff and the current source. Flag drift with citations: feature path plus heading, then the file and line (or diff hunk) that moved. Commands, tokens, entry points, and preconditions are the fields that can drift.
-3. **Live pass.** Drive every mapped feature at least once on the real user surface. Fresh process. Capture stdout, stderr, exit code. Save proof under `artifacts/<slug>/` (the verifier writes that directory). A feature you cannot reach is `verified-unreachable`. Name the prerequisite that is missing (account, fixture, flag, environment).
+3. **Live pass.** Drive every mapped feature at least once on the real user surface. Fresh process. Capture stdout, stderr, exit code, or the matching screen proof. Save proof under the path the feature file names. A feature you cannot reach is `verified-unreachable`. Name the prerequisite that is missing (account, fixture, flag, environment).
 4. **New surface.** A user-facing entry point in the diff with no feature file gets a new file in this same PR. Same four H2s. Add it to the index.
 5. **Outcome.** End with exactly one of:
    - `clean`: live pass matched the map. No map edit.
@@ -154,22 +202,29 @@ Reuse the generate-time proof rules. Exit code. A printed token. A saved artifac
 
 Report it. Keep the feature file. The next product fix has to make that command print the token again. Rewriting the expected token to match a regression is how the map goes dead.
 
-## Resume from a fresh context
+## How the next agent uses the generated skill
 
-**Generate.** Open `features/README.md` if it exists. If it is missing, interview the repo and emit the first map.
+The next agent has never seen this app. It loads `verify-<app>` mid-task.
 
-**Merge.** Open `features/README.md`, then run the merge-upkeep loop from index hygiene through outcome. Start from the PR diff when you have one.
+1. Read Launch and Doctor. Start the instance, or report that doctor failed.
+2. Open exactly one feature file, the one that matches the change under test.
+3. Drive that file. Leave the other feature files closed. Leave the product tree closed unless a command fails and the product needs a fix.
+4. File evidence. Cleanup. Evidence stays.
+5. If this agent just added user-facing behavior, add or edit the matching feature file in the same change, then run the maintain loop.
 
-1. Read baseline preconditions and driving conventions.
-2. Pick the feature file that matches the behavior you are verifying.
-3. Run that file's commands from a fresh process.
-4. File proof under the artifact path it names.
+That closed tree is the point. Re-interviewing the repo on every task is the cost this skill exists to cut.
 
-The map is the recipe. The source tree stays closed until a command fails and you need to fix the product.
+## Resume
+
+**Generate.** If `.cursor/skills/verify-<app>/SKILL.md` is missing, interview the repo and emit the skill plus the first map. Then prove it.
+
+**Maintain.** Open the verify skill's `features/README.md`. Run the maintain loop from index hygiene through outcome. Start from the PR diff when you have one.
 
 ## Sample
 
 Directory: [`poteto/features/`](poteto/features/)
+
+This is the feature-map slice for mcp-approval-scanner. A generate pass for that repo wraps these files in `.cursor/skills/verify-mcp-approval-scanner/` with Launch, Doctor, Drive, Evidence, Cleanup, and Helpers derived from that CLI.
 
 | File | User-visible behavior |
 | --- | --- |
